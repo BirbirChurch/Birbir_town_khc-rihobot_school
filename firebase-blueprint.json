@@ -1,0 +1,132 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student",
+      "description": "Student enrolled in Birbir Town KHC Rihobot School",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Student unique identifier" },
+        "seqNo": { "type": "number", "description": "Sequential student number" },
+        "fullName": { "type": "string", "description": "Full name of the student" },
+        "gender": { "type": "string", "enum": ["ወንድ", "ሴት"] },
+        "age": { "type": "number", "description": "Age of the student" },
+        "academicYear": { "type": "string", "description": "Academic year (e.g. 2018, 2019)" },
+        "grade": { "type": "string", "description": "Grade level" },
+        "section": { "type": "string", "description": "Section identifier (ሀ, ለ, ሐ, መ)" },
+        "parentPhone": { "type": "string", "description": "Parent phone number" },
+        "address": { "type": "string", "description": "Residential address" }
+      },
+      "required": ["id", "fullName", "gender", "grade", "section"]
+    },
+    "Teacher": {
+      "title": "Teacher",
+      "description": "Teacher account and teaching assignments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Teacher unique identifier" },
+        "name": { "type": "string", "description": "Teacher full name" },
+        "phone": { "type": "string", "description": "Contact phone number" },
+        "pin": { "type": "string", "description": "Access PIN code" },
+        "isHomeroom": { "type": "boolean", "description": "Whether teacher is homeroom" }
+      },
+      "required": ["id", "name", "phone", "pin"]
+    },
+    "GradeEntry": {
+      "title": "GradeEntry",
+      "description": "Grade marks recorded for a student subject and semester",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Grade entry unique ID" },
+        "studentId": { "type": "string", "description": "Target student ID" },
+        "subjectName": { "type": "string", "description": "Name of the school subject" },
+        "academicYear": { "type": "string", "description": "Academic year" },
+        "semester": { "type": "number", "description": "Semester number (1 or 2)" },
+        "updatedAt": { "type": "string", "description": "ISO date of last update" }
+      },
+      "required": ["id", "studentId", "subjectName", "academicYear", "semester", "marks"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "School announcement or official administrative letter",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Announcement unique ID" },
+        "title": { "type": "string", "description": "Headline of announcement" },
+        "content": { "type": "string", "description": "Message content" },
+        "date": { "type": "string", "description": "Date announced" },
+        "sender": { "type": "string", "description": "Sender authority" }
+      },
+      "required": ["id", "title", "content", "date", "sender"]
+    },
+    "SchoolSettings": {
+      "title": "SchoolSettings",
+      "description": "Global school configuration, academic calendar and grading thresholds",
+      "type": "object",
+      "properties": {
+        "schoolName": { "type": "string", "description": "Official name of the institution" },
+        "currentAcademicYear": { "type": "string", "description": "Active academic year" },
+        "currentSemester": { "type": "number", "description": "Active semester" }
+      },
+      "required": ["schoolName", "currentAcademicYear", "currentSemester"]
+    },
+    "ParentFeedback": {
+      "title": "ParentFeedback",
+      "description": "Message or question submitted by a parent to school leadership",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Feedback unique ID" },
+        "studentId": { "type": "string", "description": "Student ID" },
+        "studentName": { "type": "string", "description": "Student full name" },
+        "parentName": { "type": "string", "description": "Parent full name" },
+        "phone": { "type": "string", "description": "Parent contact phone" },
+        "message": { "type": "string", "description": "Feedback content" }
+      },
+      "required": ["id", "studentId", "studentName", "message"]
+    },
+    "SchoolSubject": {
+      "title": "SchoolSubject",
+      "description": "Curriculum subject information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Subject unique ID" },
+        "name": { "type": "string", "description": "Subject name in Amharic" },
+        "englishName": { "type": "string", "description": "Subject name in English" }
+      },
+      "required": ["id", "name"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Collection of student academic records"
+    },
+    "/teachers/{teacherId}": {
+      "schema": { "$ref": "#/entities/Teacher" },
+      "description": "Collection of teacher accounts and assignments"
+    },
+    "/grades/{gradeId}": {
+      "schema": { "$ref": "#/entities/GradeEntry" },
+      "description": "Collection of student assessment grades"
+    },
+    "/announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Collection of school notices and public announcements"
+    },
+    "/letters/{letterId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Collection of internal memos and letters to teachers"
+    },
+    "/feedbacks/{feedbackId}": {
+      "schema": { "$ref": "#/entities/ParentFeedback" },
+      "description": "Collection of feedback messages from parents"
+    },
+    "/subjects/{subjectId}": {
+      "schema": { "$ref": "#/entities/SchoolSubject" },
+      "description": "Collection of curriculum subjects"
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SchoolSettings" },
+      "description": "Singleton configuration document for the school"
+    }
+  }
+}

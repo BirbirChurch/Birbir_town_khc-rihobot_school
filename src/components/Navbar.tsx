@@ -12,6 +12,7 @@ interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   logoUrl?: string;
+  isFirebaseConnected?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -23,6 +24,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
   logoUrl,
+  isFirebaseConnected = true,
 }) => {
   const getRoleTitle = (role: UserRole | null): string => {
     switch (role) {
@@ -143,6 +145,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Zone 3: 1 primary action / active session */}
           <div className="flex items-center gap-3 shrink-0">
+            {/* Firebase Live Indicator */}
+            <div
+              title={isFirebaseConnected ? "Firebase Firestore: Real-time Live Sync / የቀጥታ ዳታቤዝ ግንኙነት" : "Firebase: ከመስመር ውጭ / Offline"}
+              className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
+            >
+              <span className={`w-2 h-2 rounded-full ${isFirebaseConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+              <span>Firestore Live</span>
+            </div>
+
             {currentRole ? (
               <div className="flex items-center gap-2">
                 <div className="text-right hidden sm:block">

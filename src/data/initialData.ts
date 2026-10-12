@@ -1,4 +1,4 @@
-import { Student, Teacher, GradeEntry, SchoolSettings, ParentFeedback, TeacherLetter } from '../types';
+import { Student, Teacher, GradeEntry, SchoolSettings, ParentFeedback, TeacherLetter, Announcement } from '../types';
 
 export const INITIAL_SETTINGS: SchoolSettings = {
   schoolName: 'የብርብር ከተማ ቃለ ሕይወት ርኆቦት መካከለኛና የመጀመሪያ ደረጃ ትምህርት ቤት',
@@ -1447,3 +1447,25 @@ export const INITIAL_LETTERS: TeacherLetter[] = [
     replies: [],
   },
 ];
+
+export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
+  {
+    id: 'ann-01',
+    title: 'የ2018/2019 የትምህርት ዘመን የወላጆችና መምህራን ጠቅላላ ጉባኤ ጥሪ',
+    content: 'ውድ የተማሪ ወላጆችና አሳዳጊዎች፣ የትምህርት ቤታችን የ1ኛ ወሰነ-ትምህርት የውጤት ሪፖርት አቀራረብና የቀጣይ እቅዶች ላይ ውይይት የሚካሄድበት ጠቅላላ ጉባኤ እሁድ ጥዋት 2:30 በዋናው አዳራሽ ስለሚካሄድ በሙሉ ልብ እንድትገኙ እናሳስባለን።',
+    date: '2020-02-15',
+    sender: 'የትምህርት ቤቱ አስተዳደር ቦርድ',
+    category: 'general',
+    targetAudience: 'all',
+  },
+  {
+    id: 'ann-02',
+    title: 'የ2ኛ ወሰነ-ትምህርት ምዝገባ እና የትምህርት መጀመርያ ቀን ማስታወቂያ',
+    content: 'የሁለተኛ መንፈቀ-ትምህርት ትምህርት ሰኞ ጥዋት 2:00 ሰዓት በይፋ የሚጀመር መሆኑን አውቃችሁ ተማሪዎች በሙሉ የትምህርት ቤት ደንብ ልብስ አሟልተው እንዲገኙ እንጠይቃለን።',
+    date: '2020-02-10',
+    sender: 'የዋና ር/መምህር ጽ/ቤት',
+    category: 'academic',
+    targetAudience: 'all',
+  },
+];
+

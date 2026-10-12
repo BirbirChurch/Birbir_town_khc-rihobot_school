@@ -109,6 +109,16 @@ export interface TeacherLetter {
   }[];
 }
 
+export interface Announcement {
+  id: string;
+  title: string;
+  content: string;
+  date: string;
+  sender: string;
+  category?: 'general' | 'academic' | 'urgent' | 'parent';
+  targetAudience?: 'all' | 'teachers' | 'parents' | 'students';
+}
+
 export interface GradePromotionRule {
   failThresholdSubjects: number;
   passAverageThreshold: number;

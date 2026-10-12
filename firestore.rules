@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Default deny for unmatched documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Students collection
+    match /students/{studentId} {
+      allow read, write: if isValidId(studentId);
+    }
+
+    // Teachers collection
+    match /teachers/{teacherId} {
+      allow read, write: if isValidId(teacherId);
+    }
+
+    // Grades collection
+    match /grades/{gradeId} {
+      allow read, write: if isValidId(gradeId);
+    }
+
+    // Announcements collection
+    match /announcements/{announcementId} {
+      allow read, write: if isValidId(announcementId);
+    }
+
+    // Letters collection
+    match /letters/{letterId} {
+      allow read, write: if isValidId(letterId);
+    }
+
+    // Subjects collection
+    match /subjects/{subjectId} {
+      allow read, write: if isValidId(subjectId);
+    }
+
+    // Parent Feedbacks collection
+    match /feedbacks/{feedbackId} {
+      allow read, write: if isValidId(feedbackId);
+    }
+
+    // School Settings document
+    match /settings/{settingId} {
+      allow read, write: if isValidId(settingId);
+    }
+
+    // Health check test connection path
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
