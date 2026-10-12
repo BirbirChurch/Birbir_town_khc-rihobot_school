@@ -63,6 +63,7 @@ export interface TeacherAssignment {
 export interface Teacher {
   id: string;
   name: string;
+  roleTitle?: string; // e.g. 'ር/መ/ር', 'ር/መ/ርት', 'ም/መ/ር', 'መ/ርት', 'መ/ር', 'ሞግዚት', 'የሂ/ሠራተኛ', 'ፅዳት'
   phone: string;
   pin: string;
   assignments: TeacherAssignment[];

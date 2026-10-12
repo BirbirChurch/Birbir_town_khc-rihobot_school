@@ -82,6 +82,7 @@ export const PrincipalPortal: React.FC<PrincipalPortalProps> = ({
   // Class selection for Roster & Analytics
   const [selectedGrade, setSelectedGrade] = useState<string>('1ኛ ክፍል');
   const [selectedSection, setSelectedSection] = useState<string>('ሀ');
+  const [selectedPrincipalYear, setSelectedPrincipalYear] = useState<string>(settings.currentAcademicYear);
   const [rosterViewMode, setRosterViewMode] = useState<'annual' | 'sem1' | 'sem2'>('annual');
   const [selectedSubjectForAnalysis, setSelectedSubjectForAnalysis] = useState<string>('እንግሊዝኛ');
 
@@ -270,8 +271,13 @@ export const PrincipalPortal: React.FC<PrincipalPortalProps> = ({
     subjects,
     selectedGrade,
     selectedSection,
-    settings.currentAcademicYear,
-    settings.failThresholdSubjects
+    selectedPrincipalYear === 'all'
+      ? (students.find(s => s.grade === selectedGrade)?.academicYear || settings.currentAcademicYear)
+      : selectedPrincipalYear,
+    settings.failThresholdSubjects,
+    settings.passAverageThreshold,
+    settings.mandatoryFailingSubjects,
+    settings.gradePromotionRules
   );
 
   const gradeSubjects = subjects.filter(sub => sub.applicableGrades.includes(selectedGrade));
@@ -661,8 +667,8 @@ export const PrincipalPortal: React.FC<PrincipalPortalProps> = ({
               </div>
             </div>
 
-            {/* Select Grade and Section */}
-            <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Select Grade, Section, Academic Year, and Homeroom Teacher */}
+            <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
                   የክፍል ደረጃ ምረጥ
@@ -680,15 +686,31 @@ export const PrincipalPortal: React.FC<PrincipalPortalProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  ሴክሽን ምረጥ (ሀ፣ ለ፣ ሐ፣ መ...)
+                  ሴክሽን ምረጥ
                 </label>
                 <select
                   value={selectedSection}
                   onChange={e => setSelectedSection(e.target.value)}
-                  className="w-full text-xs py-2 px-3 border border-slate-300 rounded-lg bg-white"
+                  className="w-full text-xs py-2 px-3 border border-slate-300 rounded-lg bg-white font-bold"
                 >
                   {STANDARD_SECTIONS.map(s => (
                     <option key={s} value={s}>ሴክሽን {s}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  የትምህርት ዘመን
+                </label>
+                <select
+                  value={selectedPrincipalYear}
+                  onChange={e => setSelectedPrincipalYear(e.target.value)}
+                  className="w-full text-xs py-2 px-3 border border-slate-300 rounded-lg bg-white font-semibold text-amber-900"
+                >
+                  <option value="all">ሁሉም ዓመታት</option>
+                  {settings.availableAcademicYears.map(yr => (
+                    <option key={yr} value={yr}>{yr} ዓ/ም</option>
                   ))}
                 </select>
               </div>
@@ -705,7 +727,7 @@ export const PrincipalPortal: React.FC<PrincipalPortalProps> = ({
                   <option value="">-- ስም ጠሪ መምህር መድብ --</option>
                   {teachers.map(t => (
                     <option key={t.id} value={t.id}>
-                      {t.name}
+                      {t.name} {t.roleTitle ? `(${t.roleTitle})` : ''}
                     </option>
                   ))}
                 </select>
@@ -1025,7 +1047,7 @@ export const PrincipalPortal: React.FC<PrincipalPortalProps> = ({
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={selectedGrade}
                   onChange={e => setSelectedGrade(e.target.value)}
@@ -1038,10 +1060,20 @@ export const PrincipalPortal: React.FC<PrincipalPortalProps> = ({
                 <select
                   value={selectedSection}
                   onChange={e => setSelectedSection(e.target.value)}
-                  className="text-xs py-1.5 px-3 border border-slate-300 rounded-lg bg-white"
+                  className="text-xs py-1.5 px-3 border border-slate-300 rounded-lg bg-white font-bold"
                 >
                   {STANDARD_SECTIONS.map(s => (
                     <option key={s} value={s}>ሴክሽን {s}</option>
+                  ))}
+                </select>
+                <select
+                  value={selectedPrincipalYear}
+                  onChange={e => setSelectedPrincipalYear(e.target.value)}
+                  className="text-xs py-1.5 px-3 border border-slate-300 rounded-lg bg-white font-semibold text-amber-900"
+                >
+                  <option value="all">ሁሉም ዓመታት</option>
+                  {settings.availableAcademicYears.map(yr => (
+                    <option key={yr} value={yr}>{yr} ዓ/ም</option>
                   ))}
                 </select>
               </div>

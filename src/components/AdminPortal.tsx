@@ -10,7 +10,7 @@ import {
   ParentFeedback,
   TeacherLetter,
 } from '../types';
-import { ALL_GRADES, generateNextStudentId, STANDARD_SECTIONS } from '../utils/studentIdGenerator';
+import { ALL_GRADES, generateNextStudentId, STANDARD_SECTIONS, getGradePrefix } from '../utils/studentIdGenerator';
 import { calculateClassRoster, getNextGradeLevel } from '../utils/calculations';
 import { PrincipalPortal } from './PrincipalPortal';
 import { KgDirectorPortal } from './KgDirectorPortal';
@@ -94,14 +94,16 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   setActiveTab,
 }) => {
   // Student registration states
-  const [selectedGradeFilter, setSelectedGradeFilter] = useState<string>('1ኛ ክፍል');
-  const [selectedYearFilter, setSelectedYearFilter] = useState<string>(settings.currentAcademicYear);
+  const [selectedGradeFilter, setSelectedGradeFilter] = useState<string>('all');
+  const [selectedYearFilter, setSelectedYearFilter] = useState<string>('all');
+  const [selectedSectionFilter, setSelectedSectionFilter] = useState<string>('all');
   const [searchStudentTerm, setSearchStudentTerm] = useState('');
   
   // Student Modal Form state
   const [isStudentModalOpen, setIsStudentModalOpen] = useState(false);
   const [editingStudentId, setEditingStudentId] = useState<string | null>(null);
   const [studentForm, setStudentForm] = useState<{
+    id?: string;
     fullName: string;
     gender: Gender;
     age: number;
@@ -111,6 +113,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     parentPhone: string;
     address: string;
   }>({
+    id: '',
     fullName: '',
     gender: 'ወንድ',
     age: 7,
@@ -121,11 +124,41 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     address: 'ብርብር ከተማ ቀበሌ 01',
   });
 
+  // Fast inline-edit row state
+  const [inlineEditStudentId, setInlineEditStudentId] = useState<string | null>(null);
+  const [inlineEditForm, setInlineEditForm] = useState<{
+    id: string;
+    fullName: string;
+    gender: Gender;
+    grade: string;
+    section: string;
+    academicYear: string;
+    age: number;
+  } | null>(null);
+
+  // Bulk class / section renaming & reassignment state
+  const [isBulkClassModalOpen, setIsBulkClassModalOpen] = useState(false);
+  const [bulkClassSource, setBulkClassSource] = useState<{ grade: string; section: string; academicYear: string }>({
+    grade: '8ኛ ክፍል',
+    section: 'ሀ',
+    academicYear: '2018',
+  });
+  const [bulkClassTarget, setBulkClassTarget] = useState<{ grade: string; section: string; academicYear: string; updateId: boolean }>({
+    grade: '8ኛ ክፍል',
+    section: 'ሀ',
+    academicYear: '2019',
+    updateId: true,
+  });
+  const [studentActionSuccessMsg, setStudentActionSuccessMsg] = useState<string>('');
+
   // Teacher modal / form state
   const [isTeacherModalOpen, setIsTeacherModalOpen] = useState(false);
   const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
+  const [teacherSearch, setTeacherSearch] = useState('');
+  const [teacherRoleFilter, setTeacherRoleFilter] = useState<'all' | 'teachers' | 'leadership' | 'support'>('all');
   const [teacherForm, setTeacherForm] = useState<{
     name: string;
+    roleTitle: string;
     phone: string;
     pin: string;
     isHomeroom: boolean;
@@ -136,6 +169,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     assignedSubject: string;
   }>({
     name: '',
+    roleTitle: 'መ/ርት',
     phone: '',
     pin: '1008',
     isHomeroom: false,
@@ -336,6 +370,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       const newTeacher: Teacher = {
         id: `tch-${Date.now().toString().slice(-4)}-${Math.floor(100 + Math.random() * 900)}`,
         name: row.name,
+        roleTitle: row.roleTitle || 'መምህር',
         phone: row.phone,
         pin: row.pin || String(Math.floor(1000 + Math.random() * 9000)),
         isHomeroom: row.isHomeroom,
@@ -387,6 +422,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
   const handleOpenEditStudent = (s: Student) => {
     setEditingStudentId(s.id);
     setStudentForm({
+      id: s.id,
       fullName: s.fullName,
       gender: s.gender,
       age: s.age,
@@ -403,19 +439,31 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     e.preventDefault();
     if (editingStudentId) {
       // Update existing
+      const targetId = (studentForm.id && studentForm.id.trim()) ? studentForm.id.trim() : editingStudentId;
       setStudents(prev =>
         prev.map(s =>
           s.id === editingStudentId
             ? {
                 ...s,
                 ...studentForm,
+                id: targetId,
               }
             : s
         )
       );
+
+      // If ID changed, cascade to grades
+      if (targetId !== editingStudentId) {
+        setGrades(prev =>
+          prev.map(g => (g.studentId === editingStudentId ? { ...g, studentId: targetId } : g))
+        );
+      }
+      setStudentActionSuccessMsg(`የተማሪው መረጃ (${studentForm.fullName}) በተሳካ ሁኔታ ተሻሽሏል!`);
     } else {
-      // Add new: generate ID adhering to the rule
-      const nextId = generateNextStudentId(studentForm.grade, students);
+      // Add new: generate ID adhering to the rule or use custom
+      const nextId = (studentForm.id && studentForm.id.trim())
+        ? studentForm.id.trim()
+        : generateNextStudentId(studentForm.grade, students);
       const newStudent: Student = {
         id: nextId,
         seqNo: students.filter(s => s.grade === studentForm.grade).length + 1,
@@ -431,14 +479,159 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
         conductNotes: [],
       };
       setStudents(prev => [...prev, newStudent]);
+      setStudentActionSuccessMsg(`አዲሱ ተማሪ (${newStudent.fullName}) በመለያ ኮድ ${newStudent.id} ተመዝግቧል!`);
     }
     setIsStudentModalOpen(false);
+    setTimeout(() => setStudentActionSuccessMsg(''), 3500);
+  };
+
+  // Inline fast edit handlers
+  const handleStartInlineEdit = (s: Student) => {
+    setInlineEditStudentId(s.id);
+    setInlineEditForm({
+      id: s.id,
+      fullName: s.fullName,
+      gender: s.gender,
+      grade: s.grade,
+      section: s.section,
+      academicYear: s.academicYear,
+      age: s.age,
+    });
+  };
+
+  const handleSaveInlineEdit = () => {
+    if (!inlineEditStudentId || !inlineEditForm) return;
+    const oldId = inlineEditStudentId;
+    const newId = inlineEditForm.id.trim() || oldId;
+
+    setStudents(prev =>
+      prev.map(s => {
+        if (s.id === oldId) {
+          return {
+            ...s,
+            id: newId,
+            fullName: inlineEditForm.fullName.trim(),
+            gender: inlineEditForm.gender,
+            grade: inlineEditForm.grade,
+            section: inlineEditForm.section,
+            academicYear: inlineEditForm.academicYear,
+            age: inlineEditForm.age,
+          };
+        }
+        return s;
+      })
+    );
+
+    if (newId !== oldId) {
+      setGrades(prev =>
+        prev.map(g => (g.studentId === oldId ? { ...g, studentId: newId } : g))
+      );
+    }
+
+    setInlineEditStudentId(null);
+    setInlineEditForm(null);
+    setStudentActionSuccessMsg(`የተማሪው ስም እና የክፍል መረጃ (${inlineEditForm.fullName}) በተሳካ ሁኔታ ተሻሽሏል!`);
+    setTimeout(() => setStudentActionSuccessMsg(''), 3500);
+  };
+
+  const handleCancelInlineEdit = () => {
+    setInlineEditStudentId(null);
+    setInlineEditForm(null);
+  };
+
+  // Bulk class / section reassign handler
+  const handleApplyBulkClassChange = () => {
+    const matchingStudents = students.filter(
+      s =>
+        (s.grade === bulkClassSource.grade || (bulkClassSource.grade === '8ኛ ክፍል' && s.grade.includes('8th'))) &&
+        (s.section === bulkClassSource.section || (bulkClassSource.section === 'ሀ' && s.section === 'A')) &&
+        s.academicYear === bulkClassSource.academicYear
+    );
+
+    if (matchingStudents.length === 0) {
+      alert(`በተመረጠው ምንጭ (${bulkClassSource.grade} ሴክሽን ${bulkClassSource.section} - ${bulkClassSource.academicYear} ዓ/ም) ምንም ተማሪ አልተገኘም!`);
+      return;
+    }
+
+    const confirmMsg = `${matchingStudents.length} ተማሪዎችን ከ [${bulkClassSource.grade} ሴክሽን ${bulkClassSource.section} - ${bulkClassSource.academicYear}] ወደ [${bulkClassTarget.grade} ሴክሽን ${bulkClassTarget.section} - ${bulkClassTarget.academicYear}] ማዘዋወር ወይም ስም ማስተካከል ይፈልጋሉ?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    let updatedStudents = [...students];
+    const idMap: Record<string, string> = {};
+
+    matchingStudents.forEach((st, idx) => {
+      let finalId = st.id;
+      if (bulkClassTarget.updateId) {
+        const prefix = getGradePrefix(bulkClassTarget.grade);
+        finalId = `${prefix}-${101 + idx}`;
+        idMap[st.id] = finalId;
+      }
+      updatedStudents = updatedStudents.map(s =>
+        s.id === st.id
+          ? {
+              ...s,
+              id: finalId,
+              grade: bulkClassTarget.grade,
+              section: bulkClassTarget.section,
+              academicYear: bulkClassTarget.academicYear,
+            }
+          : s
+      );
+    });
+
+    if (bulkClassTarget.updateId && Object.keys(idMap).length > 0) {
+      setGrades(prev =>
+        prev.map(g => (idMap[g.studentId] ? { ...g, studentId: idMap[g.studentId] } : g))
+      );
+    }
+
+    setStudents(updatedStudents);
+    setIsBulkClassModalOpen(false);
+    setSelectedGradeFilter(bulkClassTarget.grade);
+    setSelectedYearFilter(bulkClassTarget.academicYear);
+    setSelectedSectionFilter(bulkClassTarget.section);
+    setStudentActionSuccessMsg(`${matchingStudents.length} ተማሪዎች በተሳካ ሁኔታ ወደ ${bulkClassTarget.grade} ሴክሽን ${bulkClassTarget.section} (${bulkClassTarget.academicYear} ዓ/ም) ተዘዋውረዋል!`);
+    setTimeout(() => setStudentActionSuccessMsg(''), 4500);
+  };
+
+  // Auto-normalize abnormal grades/sections
+  const handleAutoNormalizeRoster = () => {
+    let fixedCount = 0;
+    const updated = students.map(s => {
+      let changed = false;
+      let newGrade = s.grade;
+      let newSection = s.section;
+
+      if (newGrade.toLowerCase().includes('8th') || newGrade === '8') { newGrade = '8ኛ ክፍል'; changed = true; }
+      else if (newGrade.toLowerCase().includes('6th') || newGrade === '6') { newGrade = '6ኛ ክፍል'; changed = true; }
+      else if (newGrade.toLowerCase().includes('7th') || newGrade === '7') { newGrade = '7ኛ ክፍል'; changed = true; }
+
+      if (newSection.toUpperCase() === 'A') { newSection = 'ሀ'; changed = true; }
+      else if (newSection.toUpperCase() === 'B') { newSection = 'ለ'; changed = true; }
+      else if (newSection.toUpperCase() === 'C') { newSection = 'ሐ'; changed = true; }
+
+      if (changed) {
+        fixedCount++;
+        return { ...s, grade: newGrade, section: newSection };
+      }
+      return s;
+    });
+
+    if (fixedCount > 0) {
+      setStudents(updated);
+      setStudentActionSuccessMsg(`${fixedCount} የተማሪዎች የክፍል እና ሴክሽን ስሞች ወደ መደበኛ አማርኛ ስያሜ ተስተካክለዋል!`);
+    } else {
+      setStudentActionSuccessMsg('ሁሉም የተማሪዎች የክፍልና ሴክሽን ስሞች ትክክለኛና መደበኛ ናቸው፤ የተበላሸ ስም አልተገኘም!');
+    }
+    setTimeout(() => setStudentActionSuccessMsg(''), 4000);
   };
 
   const handleDeleteStudent = (id: string, name: string) => {
     if (window.confirm(`ተማሪ ${name} (${id}) በእርግጥ እንዲሰረዝ ይፈልጋሉ?`)) {
       setStudents(prev => prev.filter(s => s.id !== id));
       setGrades(prev => prev.filter(g => g.studentId !== id));
+      setStudentActionSuccessMsg(`ተማሪ ${name} ተሰርዟል።`);
+      setTimeout(() => setStudentActionSuccessMsg(''), 3000);
     }
   };
 
@@ -449,6 +642,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     setEditingTeacherId(null);
     setTeacherForm({
       name: '',
+      roleTitle: 'መ/ርት',
       phone: '',
       pin: String(Math.floor(1000 + Math.random() * 9000)),
       isHomeroom: false,
@@ -466,6 +660,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
     const firstAss = t.assignments[0];
     setTeacherForm({
       name: t.name,
+      roleTitle: t.roleTitle || 'መ/ርት',
       phone: t.phone,
       pin: t.pin,
       isHomeroom: t.isHomeroom,
@@ -487,6 +682,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
             ? {
                 ...t,
                 name: teacherForm.name,
+                roleTitle: teacherForm.roleTitle,
                 phone: teacherForm.phone,
                 pin: teacherForm.pin,
                 isHomeroom: teacherForm.isHomeroom,
@@ -500,6 +696,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
       const newTeacher: Teacher = {
         id: `tch-${Date.now().toString().slice(-4)}`,
         name: teacherForm.name,
+        roleTitle: teacherForm.roleTitle,
         phone: teacherForm.phone,
         pin: teacherForm.pin,
         isHomeroom: teacherForm.isHomeroom,
@@ -807,14 +1004,34 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
   // Filtered students for display
   const filteredStudents = students.filter(s => {
-    const matchGrade = !selectedGradeFilter || s.grade === selectedGradeFilter;
-    const matchYear = !selectedYearFilter || s.academicYear === selectedYearFilter;
+    const matchGrade =
+      !selectedGradeFilter ||
+      selectedGradeFilter === 'all' ||
+      s.grade === selectedGradeFilter ||
+      (selectedGradeFilter === '8ኛ ክፍል' && (s.grade.toLowerCase().includes('8th') || s.grade === '8')) ||
+      (selectedGradeFilter === '6ኛ ክፍል' && (s.grade.toLowerCase().includes('6th') || s.grade === '6'));
+
+    const matchYear =
+      !selectedYearFilter ||
+      selectedYearFilter === 'all' ||
+      s.academicYear === selectedYearFilter;
+
+    const matchSection =
+      !selectedSectionFilter ||
+      selectedSectionFilter === 'all' ||
+      s.section === selectedSectionFilter ||
+      (selectedSectionFilter === 'ሀ' && s.section.toUpperCase() === 'A') ||
+      (selectedSectionFilter === 'ለ' && s.section.toUpperCase() === 'B');
+
     const matchSearch =
       !searchStudentTerm ||
       s.fullName.toLowerCase().includes(searchStudentTerm.toLowerCase()) ||
       s.id.toLowerCase().includes(searchStudentTerm.toLowerCase()) ||
+      s.grade.toLowerCase().includes(searchStudentTerm.toLowerCase()) ||
+      s.section.toLowerCase().includes(searchStudentTerm.toLowerCase()) ||
       s.parentPhone.includes(searchStudentTerm);
-    return matchGrade && matchYear && matchSearch;
+
+    return matchGrade && matchYear && matchSection && matchSearch;
   });
 
   return (
@@ -1352,25 +1569,63 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 <h1 className="text-base font-bold text-slate-900 tracking-tight">
                   የብርብር ከተማ ቃለ ሕይወት ርኆቦት መጀመሪያና መካከለኛ ትምህርት ቤት
                 </h1>
-                <div className="text-xs text-indigo-700 font-semibold mt-0.5">
-                  የተማሪዎች ምዝገባ ሰንጠረዥ — [{selectedGradeFilter}] ({selectedYearFilter} ዓ/ም)
+                <div className="text-xs text-indigo-700 font-semibold mt-0.5 flex flex-wrap items-center justify-center gap-2">
+                  <span>የተማሪዎች ምዝገባ እና የስም/ክፍል ማስተዳደሪያ ሰንጠረዥ</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="bg-indigo-50 text-indigo-800 px-2 py-0.5 rounded-md font-mono text-[11px]">
+                    {selectedGradeFilter === 'all' ? 'ሁሉም ክፍሎች' : selectedGradeFilter}
+                  </span>
+                  <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md text-[11px]">
+                    ሴክሽን: {selectedSectionFilter === 'all' ? 'ሁሉም' : selectedSectionFilter}
+                  </span>
+                  <span className="bg-amber-50 text-amber-800 px-2 py-0.5 rounded-md font-mono text-[11px]">
+                    {selectedYearFilter === 'all' ? 'ሁሉም ዓመታት' : `${selectedYearFilter} ዓ/ም`}
+                  </span>
+                  <span className="text-slate-500 font-normal text-[11px]">
+                    (የተገኙ ተማሪዎች፡ {filteredStudents.length} / {students.length})
+                  </span>
                 </div>
               </div>
             </div>
 
+            {studentActionSuccessMsg && (
+              <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2 animate-fadeIn">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-medium">{studentActionSuccessMsg}</span>
+              </div>
+            )}
+
             {/* Filter controls */}
-            <div className="mt-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="mt-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
               <div className="flex flex-wrap items-center gap-2">
                 <div>
                   <label className="text-[11px] text-slate-500 block mb-0.5 font-medium">የክፍል ደረጃ</label>
                   <select
                     value={selectedGradeFilter}
                     onChange={e => setSelectedGradeFilter(e.target.value)}
-                    className="text-xs py-1.5 px-3 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-indigo-500"
+                    className="text-xs py-1.5 px-3 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-indigo-500 font-medium"
                   >
+                    <option value="all">🌟 ሁሉም ክፍሎች ({students.length})</option>
                     {ALL_GRADES.map(g => (
-                      <option key={g} value={g}>{g}</option>
+                      <option key={g} value={g}>
+                        {g} ({students.filter(s => s.grade === g).length})
+                      </option>
                     ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] text-slate-500 block mb-0.5 font-medium">ሴክሽን</label>
+                  <select
+                    value={selectedSectionFilter}
+                    onChange={e => setSelectedSectionFilter(e.target.value)}
+                    className="text-xs py-1.5 px-3 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-indigo-500 font-medium"
+                  >
+                    <option value="all">ሁሉም ሴክሽኖች</option>
+                    <option value="ሀ">ሴክሽን ሀ (A)</option>
+                    <option value="ለ">ሴክሽን ለ (B)</option>
+                    <option value="ሐ">ሴክሽን ሐ (C)</option>
+                    <option value="መ">ሴክሽን መ (D)</option>
                   </select>
                 </div>
 
@@ -1379,29 +1634,60 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <select
                     value={selectedYearFilter}
                     onChange={e => setSelectedYearFilter(e.target.value)}
-                    className="text-xs py-1.5 px-3 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-indigo-500"
+                    className="text-xs py-1.5 px-3 bg-white border border-slate-300 rounded-lg focus:ring-1 focus:ring-indigo-500 font-medium"
                   >
-                    <option value="2020">2020 ዓ/ም</option>
-                    <option value="2019">2019 ዓ/ም</option>
+                    <option value="all">🗓️ ሁሉም ዓመታት</option>
+                    {settings.availableAcademicYears.map(yr => (
+                      <option key={yr} value={yr}>{yr} ዓ/ም</option>
+                    ))}
                   </select>
                 </div>
 
                 <div className="relative">
-                  <label className="text-[11px] text-slate-500 block mb-0.5 font-medium">ፍለጋ (ስም/ኮድ)</label>
+                  <label className="text-[11px] text-slate-500 block mb-0.5 font-medium">ፍለጋ (ስም/ኮድ/ስልክ)</label>
                   <div className="relative">
                     <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="ስም ወይም መለያ ኮድ..."
+                      placeholder="ስም፣ መለያ ኮድ፣ ክፍል..."
                       value={searchStudentTerm}
                       onChange={e => setSearchStudentTerm(e.target.value)}
-                      className="text-xs py-1.5 pl-8 pr-3 bg-white border border-slate-300 rounded-lg w-44"
+                      className="text-xs py-1.5 pl-8 pr-7 bg-white border border-slate-300 rounded-lg w-48 focus:ring-1 focus:ring-indigo-500"
                     />
+                    {searchStudentTerm && (
+                      <button
+                        onClick={() => setSearchStudentTerm('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                      >
+                        &times;
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 pt-3 md:pt-0">
+              {/* Action Buttons Toolbar */}
+              <div className="flex flex-wrap items-center gap-2 pt-2 lg:pt-0">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkClassModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-semibold rounded-lg shadow-xs transition-colors whitespace-nowrap"
+                  title="የተማሪዎችን ክፍል ወይም ሴክሽን በጅምላ ለመቀየር እና ስህተት ለማረም"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>ክፍል በጅምላ አስተካክል</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleAutoNormalizeRoster}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap"
+                  title="የተበላሹ ወይም በእንግሊዝኛ የተጻፉ የክፍልና ሴክሽን ስሞችን ወደ መደበኛ አማርኛ ስያሜ በራስ-ሰር ያስተካክላል"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>ስም/ክፍል አጣራ</span>
+                </button>
+
                 <input
                   type="file"
                   id="student-excel-input"
@@ -1411,25 +1697,25 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 />
                 <button
                   onClick={() => document.getElementById('student-excel-input')?.click()}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors whitespace-nowrap shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors whitespace-nowrap"
                   title="የተማሪዎችን መረጃ ከኤክሴል ሰነድ ጫን"
                 >
                   <Upload className="w-3.5 h-3.5" />
-                  <span>ኤክሴል ጫን (Upload Excel)</span>
+                  <span>ኤክሴል ጫን</span>
                 </button>
 
                 <button
                   onClick={downloadStudentTemplate}
-                  className="flex items-center gap-1.5 px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg border border-slate-300 transition-colors whitespace-nowrap shrink-0"
+                  className="flex items-center gap-1.5 px-2.5 py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-lg border border-slate-300 transition-colors whitespace-nowrap"
                   title="የኤክሴል ምሳሌ ቅጽ አውርድ"
                 >
                   <Download className="w-3.5 h-3.5 text-slate-500" />
-                  <span>የኤክሴል ቅጽ</span>
+                  <span>ቅጽ</span>
                 </button>
 
                 <button
                   onClick={() => exportStudentsToExcel(students, `የተማሪዎች_ዝርዝር_${selectedGradeFilter}.xlsx`)}
-                  className="flex items-center gap-1.5 px-2.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg border border-slate-300 transition-colors whitespace-nowrap shrink-0"
+                  className="flex items-center gap-1.5 px-2.5 py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-medium rounded-lg border border-slate-300 transition-colors whitespace-nowrap"
                   title="የተመዘገቡ ተማሪዎችን በኤክሴል አውርድ"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
@@ -1438,7 +1724,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
 
                 <button
                   onClick={handleOpenAddStudent}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold rounded-lg shadow-sm transition-colors whitespace-nowrap shrink-0"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors whitespace-nowrap"
                 >
                   <Plus className="w-4 h-4" />
                   <span>አዲስ ተማሪ መዝግብ</span>
@@ -1453,64 +1739,242 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </div>
             )}
 
-            {/* Students Table */}
-            <div className="mt-5 overflow-x-auto border border-slate-200 rounded-xl">
+            {/* Students Table with Fast Inline Edit */}
+            <div className="mt-5 overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
               <table className="w-full text-xs text-left">
-                <thead className="bg-slate-100/75 text-slate-800 font-semibold border-b border-slate-200">
+                <thead className="bg-slate-100/90 text-slate-800 font-semibold border-b border-slate-200">
                   <tr>
-                    <th className="py-2.5 px-3">ተራ ቁጥር</th>
+                    <th className="py-2.5 px-3 text-center w-12">ተ.ቁ</th>
                     <th className="py-2.5 px-3">መለያ ኮድ (ID)</th>
-                    <th className="py-2.5 px-3">ስም ከነ አያት</th>
-                    <th className="py-2.5 px-3">ጾታ</th>
-                    <th className="py-2.5 px-3">ዕድሜ</th>
+                    <th className="py-2.5 px-3">የተማሪ ሙሉ ስም</th>
+                    <th className="py-2.5 px-3 text-center">ጾታ</th>
+                    <th className="py-2.5 px-3 text-center">ዕድሜ</th>
                     <th className="py-2.5 px-3">ክፍል / ሴክሽን</th>
-                    <th className="py-2.5 px-3">የትምህርት ዘመን</th>
+                    <th className="py-2.5 px-3 text-center">የትምህርት ዘመን</th>
                     <th className="py-2.5 px-3">የወላጅ ስልክ</th>
                     <th className="py-2.5 px-3">አድራሻ</th>
-                    <th className="py-2.5 px-3 text-right">ተግባር</th>
+                    <th className="py-2.5 px-3 text-center w-32">ተግባር (ማረሚያ)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredStudents.length === 0 ? (
                     <tr>
-                      <td colSpan={10} className="py-8 text-center text-slate-500">
-                        በዚህ ክፍልና የትምህርት ዘመን የተመዘገበ ተማሪ የለም። "አዲስ ተማሪ መዝግብ" የሚለውን ይጫኑ።
+                      <td colSpan={10} className="py-10 text-center text-slate-500">
+                        <div className="max-w-md mx-auto space-y-2">
+                          <p className="font-semibold text-slate-700">በዚህ ማጣሪያ የተገኘ ተማሪ የለም።</p>
+                          <p className="text-[11px] text-slate-400">
+                            የክፍል ደረጃውን ወደ "ሁሉም ክፍሎች" ወይም የትምህርት ዘመኑን ወደ "ሁሉም ዓመታት" በመቀየር የተማሪዎችን ዝርዝር መመልከት ይችላሉ።
+                          </p>
+                          <button
+                            onClick={() => {
+                              setSelectedGradeFilter('all');
+                              setSelectedYearFilter('all');
+                              setSelectedSectionFilter('all');
+                              setSearchStudentTerm('');
+                            }}
+                            className="mt-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold hover:bg-indigo-100"
+                          >
+                            🔄 ሁሉንም ማጣሪያዎች አጽዳ (Show All)
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ) : (
-                    filteredStudents.map((s, idx) => (
-                      <tr key={s.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-2.5 px-3 font-medium text-slate-600">{idx + 1}</td>
-                        <td className="py-2.5 px-3 font-mono font-semibold text-indigo-700">
-                          {s.id}
-                        </td>
-                        <td className="py-2.5 px-3 font-semibold text-slate-900">{s.fullName}</td>
-                        <td className="py-2.5 px-3 text-slate-700">{s.gender}</td>
-                        <td className="py-2.5 px-3 font-mono text-slate-700">{s.age}</td>
-                        <td className="py-2.5 px-3 text-slate-700">{s.grade} - {s.section}</td>
-                        <td className="py-2.5 px-3 text-slate-700">{s.academicYear} ዓ/ም</td>
-                        <td className="py-2.5 px-3 font-mono text-slate-700">{s.parentPhone || '—'}</td>
-                        <td className="py-2.5 px-3 text-slate-600">{s.address || 'ብርብር'}</td>
-                        <td className="py-2.5 px-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleOpenEditStudent(s)}
-                              title="ኤዲት አድርግ"
-                              className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteStudent(s.id, s.fullName)}
-                              title="ሰርዝ"
-                              className="p-1 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-md"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                    filteredStudents.map((s, idx) => {
+                      const isInlineEditing = inlineEditStudentId === s.id;
+
+                      if (isInlineEditing && inlineEditForm) {
+                        return (
+                          <tr key={s.id} className="bg-amber-50/70 border-2 border-amber-300">
+                            <td className="py-2 px-2 text-center font-bold text-amber-900">{idx + 1}</td>
+                            
+                            {/* Editable ID */}
+                            <td className="py-2 px-2">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  value={inlineEditForm.id}
+                                  onChange={e => setInlineEditForm({ ...inlineEditForm, id: e.target.value })}
+                                  className="w-28 text-xs font-mono font-bold py-1 px-1.5 bg-white border border-amber-300 rounded text-indigo-800"
+                                  title="መለያ ኮድ"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const newId = generateNextStudentId(inlineEditForm.grade, students);
+                                    setInlineEditForm({ ...inlineEditForm, id: newId });
+                                  }}
+                                  className="p-1 bg-amber-200 hover:bg-amber-300 rounded text-[10px]"
+                                  title="ለተመረጠው ክፍል መደበኛ ኮድ ፍጠር"
+                                >
+                                  ⚡
+                                </button>
+                              </div>
+                            </td>
+
+                            {/* Editable Full Name */}
+                            <td className="py-2 px-2">
+                              <input
+                                type="text"
+                                value={inlineEditForm.fullName}
+                                onChange={e => setInlineEditForm({ ...inlineEditForm, fullName: e.target.value })}
+                                className="w-full text-xs font-bold py-1 px-2 bg-white border border-amber-300 rounded text-slate-900 focus:ring-1 focus:ring-amber-500"
+                                placeholder="የተማሪ ስም"
+                              />
+                            </td>
+
+                            {/* Editable Gender */}
+                            <td className="py-2 px-1 text-center">
+                              <select
+                                value={inlineEditForm.gender}
+                                onChange={e => setInlineEditForm({ ...inlineEditForm, gender: e.target.value as Gender })}
+                                className="text-xs py-1 px-1 bg-white border border-amber-300 rounded font-medium"
+                              >
+                                <option value="ወንድ">ወንድ</option>
+                                <option value="ሴት">ሴት</option>
+                              </select>
+                            </td>
+
+                            {/* Editable Age */}
+                            <td className="py-2 px-1 text-center">
+                              <input
+                                type="number"
+                                min="3"
+                                max="22"
+                                value={inlineEditForm.age}
+                                onChange={e => setInlineEditForm({ ...inlineEditForm, age: parseInt(e.target.value) || 7 })}
+                                className="w-12 text-xs py-1 px-1 bg-white border border-amber-300 rounded text-center font-mono"
+                              />
+                            </td>
+
+                            {/* Editable Grade & Section */}
+                            <td className="py-2 px-2">
+                              <div className="flex items-center gap-1">
+                                <select
+                                  value={inlineEditForm.grade}
+                                  onChange={e => {
+                                    const nextGrade = e.target.value;
+                                    const nextId = generateNextStudentId(nextGrade, students);
+                                    setInlineEditForm({ ...inlineEditForm, grade: nextGrade, id: nextId });
+                                  }}
+                                  className="text-xs py-1 px-1.5 bg-white border border-amber-300 rounded font-medium"
+                                >
+                                  {ALL_GRADES.map(g => (
+                                    <option key={g} value={g}>{g}</option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={inlineEditForm.section}
+                                  onChange={e => setInlineEditForm({ ...inlineEditForm, section: e.target.value })}
+                                  className="text-xs py-1 px-1.5 bg-white border border-amber-300 rounded font-bold"
+                                >
+                                  {STANDARD_SECTIONS.map(sec => (
+                                    <option key={sec} value={sec}>{sec}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </td>
+
+                            {/* Editable Academic Year */}
+                            <td className="py-2 px-1 text-center">
+                              <select
+                                value={inlineEditForm.academicYear}
+                                onChange={e => setInlineEditForm({ ...inlineEditForm, academicYear: e.target.value })}
+                                className="text-xs py-1 px-1 bg-white border border-amber-300 rounded font-medium"
+                              >
+                                {settings.availableAcademicYears.map(yr => (
+                                  <option key={yr} value={yr}>{yr}</option>
+                                ))}
+                              </select>
+                            </td>
+
+                            {/* Phone */}
+                            <td className="py-2 px-2 text-slate-600 font-mono text-[11px]">{s.parentPhone || '—'}</td>
+
+                            {/* Address */}
+                            <td className="py-2 px-2 text-slate-500 text-[11px] truncate max-w-[120px]">{s.address || 'ብርብር'}</td>
+
+                            {/* Inline Actions */}
+                            <td className="py-2 px-2 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={handleSaveInlineEdit}
+                                  className="flex items-center gap-1 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold text-xs shadow-2xs"
+                                  title="ማስተካከያውን አስቀምጥ"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>አስቀምጥ</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelInlineEdit}
+                                  className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs"
+                                  title="ይቅር"
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return (
+                        <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-2.5 px-3 font-medium text-slate-500 text-center">{idx + 1}</td>
+                          <td className="py-2.5 px-3 font-mono font-semibold text-indigo-700 whitespace-nowrap">
+                            {s.id}
+                          </td>
+                          <td className="py-2.5 px-3 font-semibold text-slate-900">{s.fullName}</td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-medium ${
+                              s.gender === 'ሴት' ? 'bg-pink-50 text-pink-700' : 'bg-blue-50 text-blue-700'
+                            }`}>
+                              {s.gender}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-center text-slate-700">{s.age}</td>
+                          <td className="py-2.5 px-3 text-slate-800 font-medium whitespace-nowrap">
+                            <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">
+                              {s.grade} - {s.section}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono text-slate-700">{s.academicYear} ዓ/ም</td>
+                          <td className="py-2.5 px-3 font-mono text-slate-600">{s.parentPhone || '—'}</td>
+                          <td className="py-2.5 px-3 text-slate-600 truncate max-w-[120px]">{s.address || 'ብርብር'}</td>
+                          <td className="py-2.5 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleStartInlineEdit(s)}
+                                title="ፈጣን ማረሚያ (Quick In-Place Edit): ስም ወይም ክፍል በቀጥታ እዚህ ይቀይሩ"
+                                className="flex items-center gap-1 px-2 py-1 text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-md text-[11px] font-semibold transition-colors"
+                              >
+                                <Sparkles className="w-3 h-3 text-emerald-600" />
+                                <span>ፈጣን ማረሚያ</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditStudent(s)}
+                                title="ሙሉ መረጃ አሻሽል"
+                                className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStudent(s.id, s.fullName)}
+                                title="ተማሪውን ሰርዝ"
+                                className="p-1 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-md"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -1596,115 +2060,252 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </div>
             )}
 
-            {/* Teachers list */}
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              {teachers.map(teacher => (
-                <div
-                  key={teacher.id}
-                  className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3"
+            {/* Filter & Search Bar */}
+            <div className="mt-4 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setTeacherRoleFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    teacherRoleFilter === 'all'
+                      ? 'bg-indigo-700 text-white shadow-xs'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900">{teacher.name}</h3>
-                      <div className="text-xs text-slate-500 flex items-center gap-2 mt-0.5">
-                        <span>ስልክ፡ {teacher.phone}</span>
-                        <span>·</span>
-                        <span className="font-mono text-indigo-700 font-medium">PIN: {teacher.pin}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleOpenEditTeacher(teacher)}
-                        className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-md"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteTeacher(teacher.id, teacher.name)}
-                        className="p-1 text-slate-500 hover:text-rose-600 hover:bg-white rounded-md"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
+                  ሁሉም ({teachers.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTeacherRoleFilter('leadership')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    teacherRoleFilter === 'leadership'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  👑 አመራር ({teachers.filter(t => (t.roleTitle || '').includes('ር/መ/ር') || (t.roleTitle || '').includes('ር/መ/ርት') || (t.roleTitle || '').includes('ም/መ/ር')).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTeacherRoleFilter('teachers')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    teacherRoleFilter === 'teachers'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  📚 መምህራን ({teachers.filter(t => ((t.roleTitle || '').includes('መ/ር') || (t.roleTitle || '').includes('መ/ርት')) && !(t.roleTitle || '').includes('ር/')).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTeacherRoleFilter('support')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    teacherRoleFilter === 'support'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  🛠️ ድጋፍ ሰጪ ({teachers.filter(t => (t.roleTitle || '').includes('ሞግዚት') || (t.roleTitle || '').includes('ሂ') || (t.roleTitle || '').includes('ፅዳት')).length})
+                </button>
+              </div>
 
-                  {/* Homeroom Status */}
-                  <div className="text-xs">
-                    {teacher.isHomeroom ? (
-                      <span className="inline-flex items-center gap-1 text-indigo-800 font-semibold">
-                        ★ የክፍል ስም ጠሪ (Homeroom): {teacher.homeroomGrade} ሴክሽን {teacher.homeroomSection}
-                      </span>
-                    ) : (
-                      <span className="text-slate-500">ተራ መምህር (ስም ጠሪ አይደለም)</span>
-                    )}
-                  </div>
+              <div className="relative w-full md:w-72">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="ስም፣ ስልክ፣ PIN ወይም ኃላፊነት ይፈልጉ..."
+                  value={teacherSearch}
+                  onChange={e => setTeacherSearch(e.target.value)}
+                  className="w-full text-xs pl-8 pr-7 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                />
+                {teacherSearch && (
+                  <button
+                    onClick={() => setTeacherSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                  >
+                    &times;
+                  </button>
+                )}
+              </div>
+            </div>
 
-                  {/* Assignments */}
-                  <div>
-                    <div className="text-[11px] font-semibold text-slate-700 mb-1">
-                      የተመደቡ የትምህርት ክፍሎች፡
-                    </div>
-                    <div className="space-y-1">
-                      {teacher.assignments.map((ass, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center justify-between text-xs py-1 px-2.5 bg-white border border-slate-200 rounded-md"
-                        >
-                          <span className="text-slate-800 font-medium">
-                            {ass.grade} ({ass.section}) — {ass.subjectName}
-                          </span>
-                          <button
-                            onClick={() => handleRemoveAssignment(teacher.id, i)}
-                            className="text-slate-400 hover:text-rose-600 text-xs"
+            {/* Teachers list */}
+            {(() => {
+              const filteredList = teachers.filter(t => {
+                if (teacherSearch.trim()) {
+                  const q = teacherSearch.toLowerCase();
+                  const matchName = t.name.toLowerCase().includes(q);
+                  const matchPhone = t.phone.includes(q);
+                  const matchPin = t.pin.includes(q);
+                  const matchRole = (t.roleTitle || '').toLowerCase().includes(q);
+                  if (!matchName && !matchPhone && !matchPin && !matchRole) return false;
+                }
+                if (teacherRoleFilter === 'leadership') {
+                  const r = t.roleTitle || '';
+                  return r.includes('ር/መ/ር') || r.includes('ር/መ/ርት') || r.includes('ም/መ/ር');
+                }
+                if (teacherRoleFilter === 'teachers') {
+                  const r = t.roleTitle || '';
+                  return (r.includes('መ/ር') || r.includes('መ/ርት')) && !r.includes('ር/');
+                }
+                if (teacherRoleFilter === 'support') {
+                  const r = t.roleTitle || '';
+                  return r.includes('ሞግዚት') || r.includes('ሂ') || r.includes('ፅዳት');
+                }
+                return true;
+              });
+
+              if (filteredList.length === 0) {
+                return (
+                  <div className="mt-6 p-8 text-center bg-slate-50 border border-dashed border-slate-300 rounded-xl">
+                    <Users className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-slate-700">ምንም የተገኘ መምህር ወይም ሠራተኛ የለም</p>
+                    <p className="text-xs text-slate-500 mt-1">የፍለጋ ቃሉን ወይም የተመረጠውን ማጣሪያ ይቀይሩ።</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {filteredList.map(teacher => {
+                    const isLeadership = (teacher.roleTitle || '').includes('ር/መ/ር') || (teacher.roleTitle || '').includes('ር/መ/ርት') || (teacher.roleTitle || '').includes('ም/መ/ር');
+                    const isSupport = (teacher.roleTitle || '').includes('ሞግዚት') || (teacher.roleTitle || '').includes('ሂ') || (teacher.roleTitle || '').includes('ፅዳት');
+
+                    return (
+                      <div
+                        key={teacher.id}
+                        className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 hover:border-slate-300 transition-colors"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[11px] font-mono font-bold text-slate-600 bg-slate-200/80 px-1.5 py-0.5 rounded">
+                                #{teachers.indexOf(teacher) + 1}
+                              </span>
+                              <h3 className="text-sm font-bold text-slate-900">{teacher.name}</h3>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  isLeadership
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                    : isSupport
+                                    ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                    : 'bg-indigo-100 text-indigo-900 border border-indigo-200'
+                                }`}
+                              >
+                                {isLeadership ? '👑 ' : isSupport ? '🛠️ ' : '📚 '}
+                                {teacher.roleTitle || 'መምህር'}
+                              </span>
+                            </div>
+                            <div className="text-xs text-slate-500 flex items-center gap-2 mt-1">
+                              <span>ስልክ፡ {teacher.phone}</span>
+                              <span>·</span>
+                              <span className="font-mono text-indigo-700 font-medium">PIN: {teacher.pin}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => handleOpenEditTeacher(teacher)}
+                              className="p-1 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-md"
+                              title="አድስ / አስተካክል"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTeacher(teacher.id, teacher.name)}
+                              className="p-1 text-slate-500 hover:text-rose-600 hover:bg-white rounded-md"
+                              title="ሰርዝ"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Homeroom Status */}
+                        <div className="text-xs">
+                          {teacher.isHomeroom ? (
+                            <span className="inline-flex items-center gap-1 text-indigo-800 font-semibold bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">
+                              ★ የክፍል ስም ጠሪ (Homeroom): {teacher.homeroomGrade} ሴክሽን {teacher.homeroomSection}
+                            </span>
+                          ) : (
+                            <span className="text-slate-500">
+                              {isSupport ? 'የድጋፍ ሰጪ ሠራተኛ' : 'ተራ መምህር (ስም ጠሪ አይደለም)'}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Assignments */}
+                        <div>
+                          <div className="text-[11px] font-semibold text-slate-700 mb-1">
+                            {isSupport && teacher.assignments.length === 0 ? 'የተመደቡ የትምህርት ክፍሎች፡ (ምንም የለም - የድጋፍ ሰጪ ሠራተኛ)' : 'የተመደቡ የትምህርት ክፍሎች፡'}
+                          </div>
+                          {teacher.assignments.length > 0 ? (
+                            <div className="space-y-1">
+                              {teacher.assignments.map((ass, i) => (
+                                <div
+                                  key={i}
+                                  className="flex items-center justify-between text-xs py-1 px-2.5 bg-white border border-slate-200 rounded-md"
+                                >
+                                  <span className="text-slate-800 font-medium">
+                                    {ass.grade} ({ass.section}) — {ass.subjectName}
+                                  </span>
+                                  <button
+                                    onClick={() => handleRemoveAssignment(teacher.id, i)}
+                                    className="text-slate-400 hover:text-rose-600 text-xs"
+                                  >
+                                    &times;
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : !isSupport && (
+                            <div className="text-[11px] text-slate-400 italic">ምንም የተመደበ ትምህርት የለም</div>
+                          )}
+                        </div>
+
+                        {/* Quick Add Assignment */}
+                        <div className="pt-2 border-t border-slate-200/80 flex items-center gap-2">
+                          <select
+                            id={`grade-${teacher.id}`}
+                            className="text-[11px] py-1 px-1.5 bg-white border border-slate-300 rounded-md"
                           >
-                            &times;
+                            {ALL_GRADES.slice(0, 10).map(g => (
+                              <option key={g} value={g}>{g}</option>
+                            ))}
+                          </select>
+                          <select
+                            id={`sec-${teacher.id}`}
+                            className="text-[11px] py-1 px-1.5 bg-white border border-slate-300 rounded-md"
+                          >
+                            <option value="ሀ">ሀ</option>
+                            <option value="ለ">ለ</option>
+                            <option value="ሐ">ሐ</option>
+                          </select>
+                          <select
+                            id={`sub-${teacher.id}`}
+                            className="text-[11px] py-1 px-1.5 bg-white border border-slate-300 rounded-md max-w-[130px] truncate"
+                          >
+                            {subjects.map(s => (
+                              <option key={s.id} value={s.name}>{s.name}</option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => {
+                              const g = (document.getElementById(`grade-${teacher.id}`) as HTMLSelectElement).value;
+                              const sec = (document.getElementById(`sec-${teacher.id}`) as HTMLSelectElement).value;
+                              const sub = (document.getElementById(`sub-${teacher.id}`) as HTMLSelectElement).value;
+                              handleAddAssignment(teacher.id, g, sec, sub);
+                            }}
+                            className="px-2 py-1 text-[11px] font-semibold bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                          >
+                            መድብ
                           </button>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Quick Add Assignment */}
-                  <div className="pt-2 border-t border-slate-200/80 flex items-center gap-2">
-                    <select
-                      id={`grade-${teacher.id}`}
-                      className="text-[11px] py-1 px-1.5 bg-white border border-slate-300 rounded-md"
-                    >
-                      {ALL_GRADES.slice(0, 10).map(g => (
-                        <option key={g} value={g}>{g}</option>
-                      ))}
-                    </select>
-                    <select
-                      id={`sec-${teacher.id}`}
-                      className="text-[11px] py-1 px-1.5 bg-white border border-slate-300 rounded-md"
-                    >
-                      <option value="ሀ">ሀ</option>
-                      <option value="ለ">ለ</option>
-                      <option value="ሐ">ሐ</option>
-                    </select>
-                    <select
-                      id={`sub-${teacher.id}`}
-                      className="text-[11px] py-1 px-1.5 bg-white border border-slate-300 rounded-md max-w-[130px] truncate"
-                    >
-                      {subjects.map(s => (
-                        <option key={s.id} value={s.name}>{s.name}</option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={() => {
-                        const g = (document.getElementById(`grade-${teacher.id}`) as HTMLSelectElement).value;
-                        const sec = (document.getElementById(`sec-${teacher.id}`) as HTMLSelectElement).value;
-                        const sub = (document.getElementById(`sub-${teacher.id}`) as HTMLSelectElement).value;
-                        handleAddAssignment(teacher.id, g, sec, sub);
-                      }}
-                      className="px-2 py-1 text-[11px] font-semibold bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-                    >
-                      መድብ
-                    </button>
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -2069,7 +2670,7 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     >
                       {teachers.map(t => (
                         <option key={t.id} value={t.id}>
-                          {t.name} — {t.isHomeroom ? `ስም ጠሪ (${t.homeroomGrade} ${t.homeroomSection})` : 'መምህር'}
+                          {t.name} {t.roleTitle ? `[${t.roleTitle}]` : ''} — {t.isHomeroom ? `ስም ጠሪ (${t.homeroomGrade} ${t.homeroomSection})` : (t.roleTitle || 'መምህር')}
                         </option>
                       ))}
                     </select>
@@ -2348,6 +2949,35 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  የተማሪ መለያ ኮድ (Student ID)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={studentForm.id || ''}
+                    onChange={e => setStudentForm({ ...studentForm, id: e.target.value })}
+                    placeholder="ለምሳሌ፡ bkhrsm8-101"
+                    className="w-full text-xs py-2 px-3 border border-slate-300 rounded-lg font-mono font-semibold text-indigo-700 bg-slate-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newId = generateNextStudentId(studentForm.grade, students);
+                      setStudentForm({ ...studentForm, id: newId });
+                    }}
+                    className="px-2.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold whitespace-nowrap shrink-0"
+                    title="ለተመረጠው ክፍል መደበኛ ኮድ ፍጠር"
+                  >
+                    ⚡ ኮድ አድስ
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  የክፍሉን ቅጥያ መሰረት በማድረግ (ለምሳሌ 6ኛ = bkhrsf6-..., 8ኛ = bkhrsm8-...) ይሰራል
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">ጾታ *</label>
@@ -2380,7 +3010,12 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">የክፍል ደረጃ *</label>
                   <select
                     value={studentForm.grade}
-                    onChange={e => setStudentForm({ ...studentForm, grade: e.target.value })}
+                    onChange={e => {
+                      const newGrade = e.target.value;
+                      // Update id suggestion if desired
+                      const suggestedId = generateNextStudentId(newGrade, students);
+                      setStudentForm({ ...studentForm, grade: newGrade, id: studentForm.id ? suggestedId : '' });
+                    }}
                     className="w-full text-xs py-2 px-3 border border-slate-300 rounded-lg bg-white"
                   >
                     {ALL_GRADES.map(g => (
@@ -2411,8 +3046,9 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                     onChange={e => setStudentForm({ ...studentForm, academicYear: e.target.value })}
                     className="w-full text-xs py-2 px-3 border border-slate-300 rounded-lg bg-white"
                   >
-                    <option value="2020">2020 ዓ/ም</option>
-                    <option value="2019">2019 ዓ/ም</option>
+                    {settings.availableAcademicYears.map(yr => (
+                      <option key={yr} value={yr}>{yr} ዓ/ም</option>
+                    ))}
                   </select>
                 </div>
 
@@ -2451,10 +3087,178 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
                   type="submit"
                   className="px-4 py-2 text-xs font-semibold text-white bg-indigo-700 hover:bg-indigo-800 rounded-lg"
                 >
-                  አስቀምጥ
+                  {editingStudentId ? 'አሻሽል (Save Changes)' : 'አስቀምጥ (Save)'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Class & Section Reassignment Modal */}
+      {isBulkClassModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-lg overflow-hidden animate-fadeIn">
+            <div className="px-5 py-4 bg-amber-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-amber-200" />
+                <h3 className="text-sm font-bold">
+                  የክፍል ስም እና ሴክሽን በጅምላ ማስተካከያ (Bulk Class/Section Fixer)
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsBulkClassModalOpen(false)}
+                className="text-amber-100 hover:text-white text-lg font-bold"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-slate-600">
+                የተሳሳተ የክፍል ስም ወይም ሴክሽን ለማረም፣ ወይም ተማሪዎችን ከአንድ ክፍል ወደ ሌላ ክፍል በጅምላ ለማዛወር ይህንን ይጠቀሙ።
+              </p>
+
+              {/* Source Class Selection */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                <div className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                  <span>1. ምንጭ ክፍል (የሚቀየረው ክፍል)</span>
+                  {(() => {
+                    const matchCount = students.filter(
+                      s =>
+                        (s.grade === bulkClassSource.grade || (bulkClassSource.grade === '8ኛ ክፍል' && s.grade.includes('8th'))) &&
+                        (s.section === bulkClassSource.section || (bulkClassSource.section === 'ሀ' && s.section === 'A')) &&
+                        s.academicYear === bulkClassSource.academicYear
+                    ).length;
+                    return (
+                      <span className="text-[11px] font-mono px-2 py-0.5 bg-amber-100 text-amber-900 rounded-md font-bold">
+                        የተገኙ ተማሪዎች: {matchCount}
+                      </span>
+                    );
+                  })()}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-500 mb-0.5">የክፍል ደረጃ</label>
+                    <select
+                      value={bulkClassSource.grade}
+                      onChange={e => setBulkClassSource({ ...bulkClassSource, grade: e.target.value })}
+                      className="w-full text-xs py-1.5 px-2 border border-slate-300 rounded-lg bg-white"
+                    >
+                      {ALL_GRADES.map(g => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-500 mb-0.5">ሴክሽን</label>
+                    <select
+                      value={bulkClassSource.section}
+                      onChange={e => setBulkClassSource({ ...bulkClassSource, section: e.target.value })}
+                      className="w-full text-xs py-1.5 px-2 border border-slate-300 rounded-lg bg-white font-bold"
+                    >
+                      <option value="ሀ">ሴክሽን ሀ (A)</option>
+                      <option value="ለ">ሴክሽን ለ (B)</option>
+                      <option value="ሐ">ሴክሽን ሐ (C)</option>
+                      <option value="መ">ሴክሽን መ (D)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-500 mb-0.5">የትምህርት ዘመን</label>
+                    <select
+                      value={bulkClassSource.academicYear}
+                      onChange={e => setBulkClassSource({ ...bulkClassSource, academicYear: e.target.value })}
+                      className="w-full text-xs py-1.5 px-2 border border-slate-300 rounded-lg bg-white"
+                    >
+                      {settings.availableAcademicYears.map(yr => (
+                        <option key={yr} value={yr}>{yr} ዓ/ም</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Target Class Selection */}
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+                <div className="text-xs font-bold text-emerald-950">
+                  2. መዳረሻ አዲስ ክፍል (አዲሱ ትክክለኛ ስም)
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-500 mb-0.5">አዲሱ ክፍል</label>
+                    <select
+                      value={bulkClassTarget.grade}
+                      onChange={e => setBulkClassTarget({ ...bulkClassTarget, grade: e.target.value })}
+                      className="w-full text-xs py-1.5 px-2 border border-slate-300 rounded-lg bg-white font-medium"
+                    >
+                      {ALL_GRADES.map(g => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-500 mb-0.5">አዲሱ ሴክሽን</label>
+                    <select
+                      value={bulkClassTarget.section}
+                      onChange={e => setBulkClassTarget({ ...bulkClassTarget, section: e.target.value })}
+                      className="w-full text-xs py-1.5 px-2 border border-slate-300 rounded-lg bg-white font-bold"
+                    >
+                      <option value="ሀ">ሴክሽን ሀ (A)</option>
+                      <option value="ለ">ሴክሽን ለ (B)</option>
+                      <option value="ሐ">ሴክሽን ሐ (C)</option>
+                      <option value="መ">ሴክሽን መ (D)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-medium text-slate-500 mb-0.5">የትምህርት ዘመን</label>
+                    <select
+                      value={bulkClassTarget.academicYear}
+                      onChange={e => setBulkClassTarget({ ...bulkClassTarget, academicYear: e.target.value })}
+                      className="w-full text-xs py-1.5 px-2 border border-slate-300 rounded-lg bg-white font-medium"
+                    >
+                      {settings.availableAcademicYears.map(yr => (
+                        <option key={yr} value={yr}>{yr} ዓ/ም</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs text-emerald-900 font-medium">
+                    <input
+                      type="checkbox"
+                      checked={bulkClassTarget.updateId}
+                      onChange={e => setBulkClassTarget({ ...bulkClassTarget, updateId: e.target.checked })}
+                      className="rounded text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>የተማሪዎችን መለያ ኮድ (ID) ወደ አዲሱ ክፍል መደበኛ ቅጥያ በራስ-ሰር አድስ</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkClassModalOpen(false)}
+                  className="px-4 py-2 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
+                >
+                  ይቅር
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyBulkClassChange}
+                  className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm"
+                >
+                  ለውጡን ተግብር (Apply Changes)
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2472,16 +3276,37 @@ export const AdminPortal: React.FC<AdminPortalProps> = ({
               </button>
             </div>
             <form onSubmit={handleSaveTeacher} className="p-5 space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">የመምህሩ ሙሉ ስም *</label>
-                <input
-                  type="text"
-                  required
-                  value={teacherForm.name}
-                  onChange={e => setTeacherForm({ ...teacherForm, name: e.target.value })}
-                  placeholder="ለምሳሌ፡ መ/ር ታሪኩ በቀለ"
-                  className="w-full text-xs py-2 px-3 border border-slate-300 rounded-lg"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">የሠራተኛው/መምህሩ ሙሉ ስም *</label>
+                  <input
+                    type="text"
+                    required
+                    value={teacherForm.name}
+                    onChange={e => setTeacherForm({ ...teacherForm, name: e.target.value })}
+                    placeholder="ለምሳሌ፡ ዮንኬ በሪ ዘለቀ"
+                    className="w-full text-xs py-2 px-3 border border-slate-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">የሥራ ኃላፊነት (Role) *</label>
+                  <select
+                    value={teacherForm.roleTitle}
+                    onChange={e => setTeacherForm({ ...teacherForm, roleTitle: e.target.value })}
+                    className="w-full text-xs py-2 px-3 border border-slate-300 rounded-lg bg-white font-medium"
+                  >
+                    <option value="መ/ርት">መ/ርት (መምህርት)</option>
+                    <option value="መ/ር">መ/ር (መምህር)</option>
+                    <option value="ር/መ/ር">ር/መ/ር (ርዕሰ መምህር)</option>
+                    <option value="ር/መ/ርት">ር/መ/ርት (ርዕሰ መምህርት)</option>
+                    <option value="ም/መ/ር">ም/መ/ር (ምክትል ርዕሰ መምህር)</option>
+                    <option value="ሞግዚት">ሞግዚት (ሞግዚት)</option>
+                    <option value="የሂ/ሠራተኛ">የሂ/ሠራተኛ (የሂሳብ ሠራተኛ)</option>
+                    <option value="ፅዳት">ፅዳት (የፅዳት ሠራተኛ)</option>
+                    <option value="ጠባቂ">ጠባቂ (ጥበቃ)</option>
+                    <option value="ፀሐፊ">ፀሐፊ (ሬጅስትራር/ፀሐፊ)</option>
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

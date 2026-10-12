@@ -4,8 +4,8 @@ import { INITIAL_SUBJECTS } from '../data/initialSubjects';
 
 const STORAGE_KEYS = {
   SETTINGS: 'bkhr_school_settings_v1',
-  STUDENTS: 'bkhr_school_students_v1',
-  TEACHERS: 'bkhr_school_teachers_v1',
+  STUDENTS: 'bkhr_school_students_v2',
+  TEACHERS: 'bkhr_school_teachers_v2',
   GRADES: 'bkhr_school_grades_v1',
   SUBJECTS: 'bkhr_school_subjects_v1',
   FEEDBACKS: 'bkhr_school_feedbacks_v1',
@@ -17,13 +17,14 @@ export function loadSettings(): SchoolSettings {
     const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const years = Array.isArray(parsed.availableAcademicYears) && parsed.availableAcademicYears.length
+        ? Array.from(new Set(['2018', ...parsed.availableAcademicYears]))
+        : INITIAL_SETTINGS.availableAcademicYears;
       return {
         ...INITIAL_SETTINGS,
         ...parsed,
         passwords: { ...INITIAL_SETTINGS.passwords, ...(parsed.passwords || {}) },
-        availableAcademicYears: parsed.availableAcademicYears?.length
-          ? parsed.availableAcademicYears
-          : INITIAL_SETTINGS.availableAcademicYears,
+        availableAcademicYears: years,
         mandatoryFailingSubjects: parsed.mandatoryFailingSubjects || INITIAL_SETTINGS.mandatoryFailingSubjects,
         gradePromotionRules: parsed.gradePromotionRules || {},
       };
@@ -45,7 +46,12 @@ export function saveSettings(settings: SchoolSettings): void {
 export function loadStudents(): Student[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length >= 100) {
+        return parsed;
+      }
+    }
   } catch (e) {
     console.error('Failed to load students', e);
   }
@@ -63,7 +69,12 @@ export function saveStudents(students: Student[]): void {
 export function loadTeachers(): Teacher[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.TEACHERS);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length >= 40) {
+        return parsed;
+      }
+    }
   } catch (e) {
     console.error('Failed to load teachers', e);
   }

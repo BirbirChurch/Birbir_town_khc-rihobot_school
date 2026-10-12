@@ -56,13 +56,25 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({
   };
 
   const [selectedSemester, setSelectedSemester] = useState<1 | 2>(settings.currentSemester);
+  const [selectedTeacherYear, setSelectedTeacherYear] = useState<string>(() => {
+    const match = students.find(
+      s => s.grade === activeAssignment.grade || s.grade.includes(activeAssignment.grade.replace(' ክፍል', ''))
+    );
+    return match ? match.academicYear : settings.currentAcademicYear;
+  });
 
   // Active assignment students
   const targetStudents = students.filter(
-    s =>
-      s.grade === activeAssignment.grade &&
-      s.section === activeAssignment.section &&
-      s.academicYear === settings.currentAcademicYear
+    s => {
+      const matchGrade = s.grade === activeAssignment.grade ||
+        (activeAssignment.grade === '8ኛ ክፍል' && (s.grade.includes('8th') || s.grade === '8')) ||
+        (activeAssignment.grade === '6ኛ ክፍል' && (s.grade.includes('6th') || s.grade === '6'));
+      const matchSec = s.section === activeAssignment.section ||
+        (activeAssignment.section === 'ሀ' && s.section.toUpperCase() === 'A') ||
+        (activeAssignment.section === 'ለ' && s.section.toUpperCase() === 'B');
+      const matchYear = selectedTeacherYear === 'all' || s.academicYear === selectedTeacherYear;
+      return matchGrade && matchSec && matchYear;
+    }
   );
 
   // Local draft of marks for inline fast-editing
@@ -240,8 +252,13 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({
     subjects,
     homeroomGrade,
     homeroomSection,
-    settings.currentAcademicYear,
-    settings.failThresholdSubjects
+    selectedTeacherYear === 'all'
+      ? (students.find(s => s.grade === homeroomGrade)?.academicYear || settings.currentAcademicYear)
+      : selectedTeacherYear,
+    settings.failThresholdSubjects,
+    settings.passAverageThreshold,
+    settings.mandatoryFailingSubjects,
+    settings.gradePromotionRules
   );
 
   const homeroomSubjects = subjects.filter(s => s.applicableGrades.includes(homeroomGrade));
@@ -312,8 +329,8 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({
                 </div>
               </div>
 
-              {/* Assignment Switcher */}
-              <div className="flex flex-wrap items-center gap-3">
+              {/* Assignment & Year Switchers */}
+              <div className="flex flex-wrap items-center gap-2.5">
                 <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 p-1 rounded-lg">
                   <span className="text-[11px] font-semibold text-slate-600 pl-1">ክፍልና ትምህርት፡</span>
                   <select
@@ -325,6 +342,20 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({
                       <option key={idx} value={idx}>
                         {ass.grade} ({ass.section}) — {ass.subjectName}
                       </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 p-1 rounded-lg">
+                  <span className="text-[11px] font-semibold text-slate-600 pl-1">ዘመን፡</span>
+                  <select
+                    value={selectedTeacherYear}
+                    onChange={e => setSelectedTeacherYear(e.target.value)}
+                    className="text-xs py-1 px-2 bg-white border border-slate-300 rounded-md font-semibold text-amber-900"
+                  >
+                    <option value="all">ሁሉም ዓመታት</option>
+                    {settings.availableAcademicYears.map(yr => (
+                      <option key={yr} value={yr}>{yr} ዓ/ም</option>
                     ))}
                   </select>
                 </div>
@@ -618,13 +649,29 @@ export const TeacherPortal: React.FC<TeacherPortalProps> = ({
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => window.print()}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium"
-                  >
-                    <Printer className="w-4 h-4" />
-                    <span>ይፋዊ ሮስተር አትም (Print Roster)</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-lg">
+                      <span className="text-[11px] font-medium text-slate-500">ዘመን፡</span>
+                      <select
+                        value={selectedTeacherYear}
+                        onChange={e => setSelectedTeacherYear(e.target.value)}
+                        className="text-xs py-0.5 px-2 bg-white border border-slate-300 rounded font-bold text-amber-900"
+                      >
+                        <option value="all">ሁሉም ዓመታት</option>
+                        {settings.availableAcademicYears.map(yr => (
+                          <option key={yr} value={yr}>{yr} ዓ/ም</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <button
+                      onClick={() => window.print()}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-medium"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>ይፋዊ ሮስተር አትም (Print Roster)</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-4 overflow-x-auto border border-slate-200 rounded-xl">

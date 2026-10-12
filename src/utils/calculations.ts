@@ -31,22 +31,47 @@ export function calculateClassRoster(
   mandatoryFailingSubjects: string[] = [],
   gradePromotionRules?: Record<string, GradePromotionRule>
 ): StudentRosterItem[] {
-  const classStudents = students.filter(
-    s => s.grade === gradeName && s.section === sectionName && s.academicYear === academicYear
-  );
+  const normGrade = (g: string) => {
+    const l = g.toLowerCase();
+    if (l.includes('8th') || l === '8') return '8ኛ ክፍል';
+    if (l.includes('6th') || l === '6') return '6ኛ ክፍል';
+    if (l.includes('7th') || l === '7') return '7ኛ ክፍል';
+    return g;
+  };
 
-  const gradeSubjects = subjects.filter(sub => sub.applicableGrades.includes(gradeName));
+  const normSec = (sec: string) => {
+    const u = sec.toUpperCase().trim();
+    if (u === 'A') return 'ሀ';
+    if (u === 'B') return 'ለ';
+    if (u === 'C') return 'ሐ';
+    if (u === 'D') return 'መ';
+    return sec;
+  };
+
+  const targetNormGrade = normGrade(gradeName);
+  const targetNormSec = normSec(sectionName);
+
+  const classStudents = students.filter(s => {
+    const sGrade = normGrade(s.grade);
+    const sSec = normSec(s.section);
+    const matchGrade = sGrade === targetNormGrade || s.grade === gradeName;
+    const matchSec = sectionName === 'all' || sSec === targetNormSec || s.section === sectionName;
+    const matchYear = academicYear === 'all' || s.academicYear === academicYear;
+    return matchGrade && matchSec && matchYear;
+  });
+
+  const gradeSubjects = subjects.filter(sub => sub.applicableGrades.includes(gradeName) || sub.applicableGrades.includes(targetNormGrade));
   const subjectNames = gradeSubjects.map(s => s.name);
 
   // Check if there is a specific rule configured for this grade level
-  const specificRule = gradePromotionRules?.[gradeName];
+  const specificRule = gradePromotionRules?.[gradeName] || gradePromotionRules?.[targetNormGrade];
   const effectiveFailThreshold = specificRule ? specificRule.failThresholdSubjects : failThreshold;
   const effectivePassAvg = specificRule ? specificRule.passAverageThreshold : passAverageThreshold;
   const effectiveMandatorySubjects = specificRule ? specificRule.mandatoryFailingSubjects : mandatoryFailingSubjects;
 
   const roster: StudentRosterItem[] = classStudents.map(student => {
     const studentGrades = grades.filter(
-      g => g.studentId === student.id && g.academicYear === academicYear
+      g => g.studentId === student.id && (academicYear === 'all' || g.academicYear === academicYear || g.academicYear === student.academicYear)
     );
 
     const subjectScores: Record<string, { sem1: number | null; sem2: number | null; combined: number | null }> = {};

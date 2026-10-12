@@ -15,6 +15,7 @@ export interface ParsedStudentRow {
 
 export interface ParsedTeacherRow {
   name: string;
+  roleTitle?: string;
   phone: string;
   pin: string;
   isHomeroom: boolean;
@@ -86,32 +87,38 @@ export function downloadStudentTemplate() {
 export function downloadTeacherTemplate() {
   const sampleData = [
     {
-      'የመምህሩ ሙሉ ስም (Teacher Name)': 'መ/ር ሰለሞን ተፈራ አበበ',
-      'ስልክ ቁጥር (Phone)': '0911556677',
-      'የመግቢያ ቁልፍ (PIN)': '2001',
-      'የክፍል ስም ጠሪ ነው? (አዎ/አይደለም)': 'አዎ',
-      'ስም ጠሪ የሚሆንበት ክፍል': '2ኛ ክፍል',
-      'ስም ጠሪ ሴክሽን': 'ሀ',
-      'የሚያስተምረው ክፍል': '2ኛ ክፍል',
-      'የሚያስተምረው ሴክሽን': 'ሀ',
-      'የትምህርት ዓይነት': 'እንግሊዝኛ',
-    },
-    {
-      'የመምህሩ ሙሉ ስም (Teacher Name)': 'መ/ርት ቤተልሔም ግርማ ለማ',
-      'ስልክ ቁጥር (Phone)': '0922667788',
-      'የመግቢያ ቁልፍ (PIN)': '2002',
+      'ተ.ቁ': 1,
+      'የሠራተኞች ስም (Name)': 'ዮንኬ በሪ ዘለቀ',
+      'የሥራ ኃላፍነት (Role: ር/መ/ር, ር/መ/ርት, መ/ር, መ/ርት, ም/መ/ር, ሞግዚት, የሂ/ሠራተኛ, ፅዳት)': 'ር/መ/ር',
+      'ስልክ ቁጥር (Phone)': '0911001001',
+      'የመግቢያ ቁልፍ (PIN)': '1001',
       'የክፍል ስም ጠሪ ነው? (አዎ/አይደለም)': 'አይደለም',
       'ስም ጠሪ የሚሆንበት ክፍል': '',
       'ስም ጠሪ ሴክሽን': '',
-      'የሚያስተምረው ክፍል': '7ኛ ክፍል',
+      'የሚያስተምረው ክፍል': '8ኛ ክፍል',
       'የሚያስተምረው ሴክሽን': 'ሀ',
-      'የትምህርት ዓይነት': 'ፊዚክስ',
+      'የትምህርት ዓይነት': 'ዜግነት ትምህርት',
+    },
+    {
+      'ተ.ቁ': 2,
+      'የሠራተኞች ስም (Name)': 'ዘውድቱ ሚልክያስ',
+      'የሥራ ኃላፍነት (Role: ር/መ/ር, ር/መ/ርት, መ/ር, መ/ርት, ም/መ/ር, ሞግዚት, የሂ/ሠራተኛ, ፅዳት)': 'መ/ርት',
+      'ስልክ ቁጥር (Phone)': '0911001003',
+      'የመግቢያ ቁልፍ (PIN)': '1003',
+      'የክፍል ስም ጠሪ ነው? (አዎ/አይደለም)': 'አዎ',
+      'ስም ጠሪ የሚሆንበት ክፍል': '1ኛ ክፍል',
+      'ስም ጠሪ ሴክሽን': 'ሀ',
+      'የሚያስተምረው ክፍል': '1ኛ ክፍል',
+      'የሚያስተምረው ሴክሽን': 'ሀ',
+      'የትምህርት ዓይነት': 'እንግሊዝኛ',
     },
   ];
 
   const ws = XLSX.utils.json_to_sheet(sampleData);
   ws['!cols'] = [
+    { wch: 8 },
     { wch: 28 },
+    { wch: 24 },
     { wch: 18 },
     { wch: 18 },
     { wch: 26 },
@@ -124,7 +131,7 @@ export function downloadTeacherTemplate() {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'የመምህራን ቅጽ');
-  XLSX.writeFile(wb, 'የመምህራን_ምዝገባ_ቅጽ_Template.xlsx');
+  XLSX.writeFile(wb, 'የመምህራንና_ሠራተኞች_ምዝገባ_ቅጽ_Template.xlsx');
 }
 
 /**
@@ -140,23 +147,42 @@ export async function parseStudentsExcelFile(file: File, defaultYear: string = '
   const parsedStudents: ParsedStudentRow[] = [];
 
   for (const row of rawRows) {
-    // Look up fields with flexible header matching (Amharic or English)
-    const fullName =
-      row['ስም ከነ አያት (Full Name)'] ||
-      row['ስም ከነ አያት'] ||
-      row['ሙሉ ስም'] ||
-      row['Full Name'] ||
-      row['Name'] ||
-      row['student_name'];
+    // Look up fields with case-insensitive and flexible header matching (Amharic or English)
+    const findVal = (...keys: string[]) => {
+      for (const k of keys) {
+        if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') return row[k];
+        // Case-insensitive fallback
+        const lowerK = k.toLowerCase();
+        for (const actualKey of Object.keys(row)) {
+          if (actualKey.toLowerCase() === lowerK && row[actualKey] !== undefined && row[actualKey] !== null) {
+            return row[actualKey];
+          }
+        }
+      }
+      return undefined;
+    };
 
-    if (!fullName || typeof fullName !== 'string' || !fullName.trim()) continue;
+    const rawFullName = findVal(
+      'ስም ከነ አያት (Full Name)',
+      'ስም ከነ አያት',
+      'ሙሉ ስም',
+      'student_name',
+      'STUDENT_NAME',
+      'Student Name',
+      'Full Name',
+      'Name'
+    );
 
-    const rawGender =
-      row['ጾታ (Gender: ወንድ/ሴት)'] ||
-      row['ጾታ'] ||
-      row['Gender'] ||
-      row['Sex'] ||
-      'ወንድ';
+    if (!rawFullName || typeof rawFullName !== 'string' || !rawFullName.trim()) continue;
+
+    const rawGender = findVal(
+      'ጾታ (Gender: ወንድ/ሴት)',
+      'ጾታ',
+      'gender',
+      'Gender',
+      'sex',
+      'Sex'
+    ) || 'ወንድ';
     
     let gender: Gender = 'ወንድ';
     const gStr = String(rawGender).trim().toLowerCase();
@@ -164,54 +190,93 @@ export async function parseStudentsExcelFile(file: File, defaultYear: string = '
       gender = 'ሴት';
     }
 
-    const ageRaw =
-      row['ዕድሜ (Age)'] ||
-      row['ዕድሜ'] ||
-      row['Age'] ||
-      7;
-    const age = parseInt(ageRaw, 10) || 7;
+    let rawGrade = String(findVal(
+      'የክፍል ደረጃ (Grade)',
+      'የክፍል ደረጃ',
+      'ክፍል',
+      'st_grade',
+      'ST_GRADE',
+      'Grade',
+      'grade'
+    ) || '1ኛ ክፍል').trim();
 
-    const grade =
-      row['የክፍል ደረጃ (Grade)'] ||
-      row['የክፍል ደረጃ'] ||
-      row['ክፍል'] ||
-      row['Grade'] ||
-      '1ኛ ክፍል';
+    // Normalize grade names (e.g. "8th" -> "8ኛ ክፍል", "6th" -> "6ኛ ክፍል")
+    if (rawGrade.toLowerCase().includes('8th') || rawGrade === '8') rawGrade = '8ኛ ክፍል';
+    else if (rawGrade.toLowerCase().includes('6th') || rawGrade === '6') rawGrade = '6ኛ ክፍል';
+    else if (rawGrade.toLowerCase().includes('7th') || rawGrade === '7') rawGrade = '7ኛ ክፍል';
+    else if (rawGrade.toLowerCase().includes('5th') || rawGrade === '5') rawGrade = '5ኛ ክፍል';
+    else if (rawGrade.toLowerCase().includes('4th') || rawGrade === '4') rawGrade = '4ኛ ክፍል';
+    else if (rawGrade.toLowerCase().includes('3rd') || rawGrade === '3') rawGrade = '3ኛ ክፍል';
+    else if (rawGrade.toLowerCase().includes('2nd') || rawGrade === '2') rawGrade = '2ኛ ክፍል';
+    else if (rawGrade.toLowerCase().includes('1st') || rawGrade === '1') rawGrade = '1ኛ ክፍል';
+    else if (rawGrade.toLowerCase().includes('kg1') || rawGrade.toLowerCase().includes('ማቆያ')) rawGrade = 'ማቆያ';
+    else if (rawGrade.toLowerCase().includes('kg2') || rawGrade.toLowerCase().includes('ደረጃ 1')) rawGrade = 'ደረጃ 1';
+    else if (rawGrade.toLowerCase().includes('kg3') || rawGrade.toLowerCase().includes('ደረጃ 2')) rawGrade = 'ደረጃ 2';
 
-    const section =
-      row['ሴክሽን (Section: ሀ/ለ/ሐ)'] ||
-      row['ሴክሽን'] ||
-      row['Section'] ||
-      'ሀ';
+    let rawSection = String(findVal(
+      'ሴክሽን (Section: ሀ/ለ/ሐ)',
+      'ሴክሽን',
+      'st_section',
+      'ST_SECTION',
+      'Section',
+      'section'
+    ) || 'ሀ').trim();
 
-    const year =
-      row['የትምህርት ዘመን (Year)'] ||
-      row['የትምህርት ዘመን'] ||
-      row['Academic Year'] ||
-      row['Year'] ||
-      defaultYear;
+    // Normalize section (A -> ሀ, B -> ለ, C -> ሐ, D -> መ)
+    if (rawSection.toUpperCase() === 'A') rawSection = 'ሀ';
+    else if (rawSection.toUpperCase() === 'B') rawSection = 'ለ';
+    else if (rawSection.toUpperCase() === 'C') rawSection = 'ሐ';
+    else if (rawSection.toUpperCase() === 'D') rawSection = 'መ';
 
-    const parentPhone =
-      row['የወላጅ ስልክ (Parent Phone)'] ||
-      row['የወላጅ ስልክ'] ||
-      row['ስልክ ቁጥር'] ||
-      row['ስልክ'] ||
-      row['Phone'] ||
-      row['parent_phone'] ||
-      '';
+    const ageRaw = findVal('ዕድሜ (Age)', 'ዕድሜ', 'age', 'Age');
+    let age = parseInt(ageRaw, 10);
+    if (isNaN(age) || age <= 0) {
+      if (rawGrade.includes('8')) age = 14;
+      else if (rawGrade.includes('7')) age = 13;
+      else if (rawGrade.includes('6')) age = 12;
+      else if (rawGrade.includes('5')) age = 11;
+      else if (rawGrade.includes('4')) age = 10;
+      else if (rawGrade.includes('3')) age = 9;
+      else if (rawGrade.includes('2')) age = 8;
+      else if (rawGrade.includes('1ኛ')) age = 7;
+      else if (rawGrade.includes('ደረጃ 2')) age = 6;
+      else if (rawGrade.includes('ደረጃ 1')) age = 5;
+      else if (rawGrade.includes('ማቆያ')) age = 4;
+      else age = 7;
+    }
 
-    const address =
-      row['አድራሻ (Address)'] ||
-      row['አድራሻ'] ||
-      row['Address'] ||
-      'ብርብር ከተማ ቀበሌ 01';
+    const year = findVal(
+      'የትምህርት ዘመን (Year)',
+      'የትምህርት ዘመን',
+      'academic_year',
+      'Academic Year',
+      'Year',
+      'year'
+    ) || defaultYear;
+
+    const parentPhone = findVal(
+      'የወላጅ ስልክ (Parent Phone)',
+      'የወላጅ ስልክ',
+      'ስልክ ቁጥር',
+      'ስልክ',
+      'Phone',
+      'phone',
+      'parent_phone'
+    ) || '';
+
+    const address = findVal(
+      'አድራሻ (Address)',
+      'አድራሻ',
+      'Address',
+      'address'
+    ) || 'ብርብር ከተማ ቀበሌ 01';
 
     parsedStudents.push({
-      fullName: String(fullName).trim(),
+      fullName: String(rawFullName).trim(),
       gender,
       age,
-      grade: String(grade).trim(),
-      section: String(section).trim(),
+      grade: rawGrade,
+      section: rawSection,
       academicYear: String(year).trim(),
       parentPhone: String(parentPhone).trim(),
       address: String(address).trim(),
@@ -298,8 +363,17 @@ export async function parseTeachersExcelFile(file: File): Promise<ParsedTeacherR
       row['Subject'] ||
       'እንግሊዝኛ';
 
+    const roleTitle =
+      row['የሥራ ኃላፍነት'] ||
+      row['የሥራ ኃላፊነት'] ||
+      row['ኃላፊነት'] ||
+      row['Role'] ||
+      row['Job Title'] ||
+      'መምህር';
+
     parsedTeachers.push({
       name: String(name).trim(),
+      roleTitle: String(roleTitle).trim(),
       phone: String(phone).trim(),
       pin: String(pin).trim(),
       isHomeroom,
@@ -340,10 +414,11 @@ export function exportStudentsToExcel(students: Student[], fileName: string = '�
 /**
  * Export all teachers to Excel
  */
-export function exportTeachersToExcel(teachers: Teacher[], fileName: string = 'የመምህራን_ዝርዝር.xlsx') {
+export function exportTeachersToExcel(teachers: Teacher[], fileName: string = 'የመምህራንና_ሠራተኞች_ዝርዝር.xlsx') {
   const exportData = teachers.map((t, idx) => ({
     'ተ.ቁ': idx + 1,
-    'የመምህር ስም': t.name,
+    'የሠራተኞች ስም': t.name,
+    'የሥራ ኃላፊነት': t.roleTitle || 'መምህር',
     'ስልክ ቁጥር': t.phone,
     'የመግቢያ ቁልፍ (PIN)': t.pin,
     'የክፍል ስም ጠሪ': t.isHomeroom ? `አዎ (${t.homeroomGrade} ${t.homeroomSection})` : 'አይደለም',
@@ -352,6 +427,6 @@ export function exportTeachersToExcel(teachers: Teacher[], fileName: string = '�
 
   const ws = XLSX.utils.json_to_sheet(exportData);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'መምህራን');
+  XLSX.utils.book_append_sheet(wb, ws, 'መምህራንና ሠራተኞች');
   XLSX.writeFile(wb, fileName);
 }

@@ -568,7 +568,7 @@ export const KgDirectorPortal: React.FC<KgDirectorPortalProps> = ({
                   የክፍሉ ስም ጠሪ አስተማሪ
                 </label>
                 <div className="text-xs py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg font-semibold text-indigo-900">
-                  {currentKgHomeroom ? currentKgHomeroom.name : 'አልተመደበም'}
+                  {currentKgHomeroom ? `${currentKgHomeroom.name} (${currentKgHomeroom.roleTitle || 'መ/ርት'})` : 'አልተመደበም'}
                 </div>
               </div>
             </div>
